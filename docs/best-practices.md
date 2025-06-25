@@ -658,27 +658,68 @@ class AIOptimizer:
 
 ### Application Monitoring
 
-#### Error Tracking (Sentry)
+#### **SETUP: Sentry Error Tracking**
+**REQUIRED**: Implement comprehensive error tracking and monitoring:
+
+**1. Install Sentry Dependencies:**
+```bash
+npm install --save @sentry/nextjs @sentry/profiling-node
+```
+
+**2. Create `sentry.client.config.ts`:**
 ```typescript
 import * as Sentry from '@sentry/nextjs';
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
-  tracesSampleRate: 0.1,
+  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+  environment: process.env.NODE_ENV,
   beforeSend(event) {
     // Filter out sensitive information
     if (event.user) {
       delete event.user.email;
     }
+    // Remove sensitive request data
+    if (event.request) {
+      delete event.request.cookies;
+      delete event.request.headers?.authorization;
+    }
     return event;
   },
+  integrations: [
+    new Sentry.BrowserTracing({
+      tracePropagationTargets: ["localhost", /^https:\/\/yourapi\.domain\.com\/api/],
+    }),
+  ],
 });
+```
+
+**3. Create `sentry.server.config.ts`:**
+```typescript
+import * as Sentry from '@sentry/nextjs';
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+  environment: process.env.NODE_ENV,
+  integrations: [
+    new Sentry.Integrations.Http({ tracing: true }),
+    new Sentry.ProfilingIntegration(),
+  ],
+  profilesSampleRate: 1.0,
+});
+```
+
+**4. Create Error Tracking Utilities (`lib/sentry.ts`):**
+```typescript
+import * as Sentry from '@sentry/nextjs';
 
 // Custom error tracking
 export const trackError = (error: Error, context?: Record<string, any>) => {
   Sentry.withScope((scope) => {
     if (context) {
       scope.setContext('additional_info', context);
+      scope.setLevel('error');
     }
     Sentry.captureException(error);
   });
@@ -693,18 +734,82 @@ export const trackPerformance = (name: string, fn: () => Promise<any>) => {
       return result;
     } catch (error) {
       transaction.setStatus('internal_error');
+      trackError(error as Error, { transactionName: name });
       throw error;
     } finally {
       transaction.finish();
     }
   });
 };
+
+// User context tracking
+export const setUserContext = (user: { id: string; plan?: string }) => {
+  Sentry.setUser({
+    id: user.id,
+    subscription: user.plan,
+  });
+};
+
+// AI Query tracking
+export const trackAIQuery = (queryData: {
+  question: string;
+  bookId: string;
+  responseTime: number;
+  success: boolean;
+}) => {
+  Sentry.addBreadcrumb({
+    message: 'AI Query Processed',
+    category: 'ai',
+    level: 'info',
+    data: {
+      bookId: queryData.bookId,
+      questionLength: queryData.question.length,
+      responseTime: queryData.responseTime,
+      success: queryData.success,
+    },
+  });
+};
 ```
 
-#### Custom Metrics & Analytics
+**5. Update `next.config.js` for Sentry:**
+```javascript
+const { withSentryConfig } = require('@sentry/nextjs');
+
+const nextConfig = {
+  // ... existing config
+};
+
+const sentryWebpackPluginOptions = {
+  silent: true,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+};
+
+module.exports = withSentryConfig(nextConfig, sentryWebpackPluginOptions);
+```
+
+#### **SETUP: Analytics & Business Metrics**
+**REQUIRED**: Implement comprehensive user analytics and business metrics:
+
+**1. Install Analytics Dependencies:**
+```bash
+npm install --save posthog-js @vercel/analytics @vercel/speed-insights
+```
+
+**2. Create Analytics Service (`lib/analytics.ts`):**
 ```typescript
-// Custom analytics service
+import posthog from 'posthog-js';
+import { analytics } from '@vercel/analytics';
+
+// Initialize PostHog (client-side)
+if (typeof window !== 'undefined') {
+  posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
+    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com',
+  });
+}
+
 export class AnalyticsService {
+  // Track user actions
   async trackUserAction(action: string, userId: string, metadata?: any) {
     const event = {
       action,
@@ -713,26 +818,161 @@ export class AnalyticsService {
       metadata: metadata || {},
     };
     
-    // Send to analytics service (e.g., Mixpanel, PostHog)
-    await this.sendEvent(event);
+    // PostHog tracking
+    posthog.capture(action, {
+      userId,
+      ...metadata,
+    });
+    
+    // Vercel Analytics
+    analytics.track(action, metadata);
   }
   
+  // AI-specific metrics
   async trackAIQueryMetrics(query: string, responseTime: number, userId: string) {
     await this.trackUserAction('ai_query', userId, {
       queryLength: query.length,
       responseTime,
       queryType: this.classifyQuery(query),
+      aiModel: 'gpt-4', // or dynamic
     });
   }
   
+  // Reading progress tracking
   async trackReadingProgress(bookId: string, userId: string, progress: number) {
     await this.trackUserAction('reading_progress', userId, {
       bookId,
       progress,
       sessionDuration: this.calculateSessionDuration(userId),
+      pageCount: Math.floor(progress * 100),
     });
   }
+  
+  // Business metrics
+  async trackSubscriptionEvent(userId: string, plan: string, action: 'upgrade' | 'downgrade' | 'cancel') {
+    await this.trackUserAction('subscription_change', userId, {
+      plan,
+      action,
+      mrr_impact: this.calculateMRRImpact(plan, action),
+    });
+  }
+  
+  // Feature usage tracking
+  async trackFeatureUsage(feature: string, userId: string, success: boolean) {
+    await this.trackUserAction('feature_used', userId, {
+      feature,
+      success,
+      timestamp: Date.now(),
+    });
+  }
+  
+  // Error tracking for business impact
+  async trackBusinessError(error: string, userId: string, impact: 'low' | 'medium' | 'high') {
+    await this.trackUserAction('business_error', userId, {
+      error,
+      impact,
+      affectedFeature: this.determineAffectedFeature(error),
+    });
+  }
+  
+  private classifyQuery(query: string): string {
+    // Classify query types for analytics
+    if (query.includes('character') || query.includes('who is')) return 'character_inquiry';
+    if (query.includes('theme') || query.includes('meaning')) return 'theme_analysis';
+    if (query.includes('summary') || query.includes('summarize')) return 'summary_request';
+    return 'general_question';
+  }
+  
+  private calculateSessionDuration(userId: string): number {
+    // Implementation for session duration calculation
+    return 0; // Placeholder
+  }
+  
+  private calculateMRRImpact(plan: string, action: string): number {
+    // Calculate Monthly Recurring Revenue impact
+    const planValues = { basic: 9.99, premium: 19.99, enterprise: 49.99 };
+    return planValues[plan as keyof typeof planValues] || 0;
+  }
+  
+  private determineAffectedFeature(error: string): string {
+    // Map errors to features for business impact analysis
+    if (error.includes('upload')) return 'book_upload';
+    if (error.includes('ai') || error.includes('query')) return 'ai_assistant';
+    if (error.includes('auth')) return 'authentication';
+    return 'unknown';
+  }
 }
+
+// Singleton instance
+export const analytics = new AnalyticsService();
+```
+
+**3. Create Monitoring Dashboard Hook (`hooks/useAnalytics.ts`):**
+```typescript
+import { useEffect } from 'react';
+import { analytics } from '@/lib/analytics';
+import { useUser } from '@clerk/nextjs'; // or your auth solution
+
+export const useAnalytics = () => {
+  const { user } = useUser();
+  
+  useEffect(() => {
+    if (user) {
+      // Set user context for all tracking
+      analytics.trackUserAction('page_view', user.id, {
+        path: window.location.pathname,
+        referrer: document.referrer,
+      });
+    }
+  }, [user]);
+  
+  return {
+    trackAIQuery: (query: string, responseTime: number) => {
+      if (user) {
+        analytics.trackAIQueryMetrics(query, responseTime, user.id);
+      }
+    },
+    trackReadingProgress: (bookId: string, progress: number) => {
+      if (user) {
+        analytics.trackReadingProgress(bookId, user.id, progress);
+      }
+    },
+    trackFeatureUsage: (feature: string, success: boolean) => {
+      if (user) {
+        analytics.trackFeatureUsage(feature, user.id, success);
+      }
+    },
+  };
+};
+```
+
+**4. Key Business Metrics to Track:**
+```typescript
+// Define important KPIs for Literati
+export const BUSINESS_METRICS = {
+  // User Engagement
+  DAILY_ACTIVE_USERS: 'dau',
+  WEEKLY_ACTIVE_USERS: 'wau', 
+  MONTHLY_ACTIVE_USERS: 'mau',
+  SESSION_DURATION: 'session_duration',
+  BOOKS_READ_PER_USER: 'books_per_user',
+  
+  // AI Usage
+  AI_QUERIES_PER_SESSION: 'ai_queries_session',
+  AI_RESPONSE_SATISFACTION: 'ai_satisfaction',
+  AI_RESPONSE_TIME: 'ai_response_time',
+  
+  // Business Growth
+  USER_ACQUISITION_COST: 'cac',
+  LIFETIME_VALUE: 'ltv',
+  CHURN_RATE: 'churn_rate',
+  CONVERSION_RATE: 'conversion_rate',
+  
+  // Feature Adoption
+  EPUB_UPLOAD_SUCCESS_RATE: 'epub_success_rate',
+  CROSS_PLATFORM_USAGE: 'cross_platform',
+  SHARING_FREQUENCY: 'sharing_rate',
+} as const;
 ```
 
 ---
@@ -752,6 +992,51 @@ npm run lint         # Catch syntax problems
 - Catches type errors early in development
 - Maintains consistent code quality standards
 - Saves CI/CD resources and time
+
+#### **SETUP: Automated Pre-Commit Hooks**
+**REQUIRED**: Install and configure pre-commit validation:
+
+**1. Install Husky for Git Hooks:**
+```bash
+npm install --save-dev husky
+npx husky install
+npm set-script prepare "husky install"
+```
+
+**2. Create Pre-Commit Hook:**
+```bash
+npx husky add .husky/pre-commit "npm run pre-commit"
+```
+
+**3. Add Pre-Commit Script to package.json:**
+```json
+{
+  "scripts": {
+    "pre-commit": "npm run type-check && npm run lint && npm run build"
+  }
+}
+```
+
+**4. Optional: Add Lint-Staged for Performance:**
+```bash
+npm install --save-dev lint-staged
+```
+
+**Add to package.json:**
+```json
+{
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{ts,tsx}": ["tsc --noEmit"]
+  },
+  "scripts": {
+    "pre-commit": "lint-staged && npm run build"
+  }
+}
+```
 
 ### Git Workflow Standards
 
@@ -775,17 +1060,77 @@ Closes #AUTH-001"
 
 ### Environment Management
 
-#### Environment Variables
-```bash
-# .env.local (development)
-DATABASE_URL="postgresql://localhost:5432/literati_dev"
-NEXTAUTH_SECRET="your-dev-secret"
-OPENAI_API_KEY="sk-dev-key"
+#### Environment Variables Setup
+**REQUIRED**: Create these environment files for proper configuration management:
 
-# .env.production (production)
+**1. Create `.env.local` (Development)**
+```bash
+# Database Configuration
+DATABASE_URL="postgresql://localhost:5432/literati_dev"
+
+# Authentication
+NEXTAUTH_SECRET="your-dev-secret-min-32-chars"
+NEXTAUTH_URL="http://localhost:3000"
+
+# AI Services
+OPENAI_API_KEY="sk-dev-key"
+ANTHROPIC_API_KEY="sk-ant-dev-key"
+
+# Clerk Authentication (if using)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_test_..."
+CLERK_SECRET_KEY="sk_test_..."
+
+# Vector Database (Pinecone/Supabase)
+PINECONE_API_KEY="your-pinecone-key"
+PINECONE_ENVIRONMENT="us-west1-gcp"
+
+# File Storage (AWS S3/Supabase)
+AWS_ACCESS_KEY_ID="dev-access-key"
+AWS_SECRET_ACCESS_KEY="dev-secret-key"
+AWS_REGION="us-east-1"
+AWS_S3_BUCKET="literati-dev-storage"
+```
+
+**2. Create `.env.production` (Production)**
+```bash
+# Database Configuration
 DATABASE_URL="postgresql://prod-host:5432/literati_prod"
-NEXTAUTH_SECRET="secure-prod-secret" 
+
+# Authentication
+NEXTAUTH_SECRET="secure-prod-secret-min-32-chars"
+NEXTAUTH_URL="https://yourdomain.com"
+
+# AI Services
 OPENAI_API_KEY="sk-prod-key"
+ANTHROPIC_API_KEY="sk-ant-prod-key"
+
+# Clerk Authentication (if using)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_live_..."
+CLERK_SECRET_KEY="sk_live_..."
+
+# Vector Database
+PINECONE_API_KEY="your-prod-pinecone-key"
+PINECONE_ENVIRONMENT="us-west1-gcp"
+
+# File Storage
+AWS_ACCESS_KEY_ID="prod-access-key"
+AWS_SECRET_ACCESS_KEY="prod-secret-key"
+AWS_REGION="us-east-1"
+AWS_S3_BUCKET="literati-prod-storage"
+
+# Monitoring & Analytics
+SENTRY_DSN="https://your-sentry-dsn"
+SENTRY_ORG="your-org"
+SENTRY_PROJECT="literati"
+```
+
+**3. Update `.gitignore` to exclude environment files:**
+```bash
+# Environment files
+.env
+.env.local
+.env.production
+.env.*.local
 ```
 
 #### Configuration Management
@@ -796,20 +1141,31 @@ OPENAI_API_KEY="sk-prod-key"
 
 ### CI/CD Pipeline Standards
 
-#### GitHub Actions Workflow
+#### **SETUP: GitHub Actions CI/CD Pipeline**
+**REQUIRED**: Create automated testing and deployment pipeline:
+
+**1. Create `.github/workflows/ci.yml`:**
 ```yaml
 name: Literati CI/CD
-on: [push, pull_request]
+on: 
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   quality-check:
+    name: Quality Checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: 'npm'
       
       - name: Install dependencies
         run: npm ci
@@ -818,14 +1174,75 @@ jobs:
         run: npm run type-check
       
       - name: Lint code
-        run: npm run lint
+        run: npm run lint:check
       
       - name: Run tests
         run: npm run test:ci
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
       
       - name: Build application
         run: npm run build
+        env:
+          SKIP_ENV_VALIDATION: true
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        if: success()
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run security audit
+        run: npm audit --audit-level high
+      
+      - name: Scan for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [quality-check, security-scan]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Vercel (Staging)
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+
+  deploy-production:
+    name: Deploy to Production
+    needs: [quality-check, security-scan]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Vercel (Production)
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+          scope: ${{ secrets.VERCEL_ORG_ID }}
 ```
+
+**2. Required GitHub Secrets:**
+Add these secrets in GitHub repository settings:
+- `VERCEL_TOKEN` - Vercel deployment token
+- `VERCEL_ORG_ID` - Your Vercel organization ID  
+- `VERCEL_PROJECT_ID` - Your Vercel project ID
 
 #### Deployment Gates
 - **Quality Gate**: All tests must pass
