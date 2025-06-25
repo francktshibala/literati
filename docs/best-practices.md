@@ -735,4 +735,187 @@ export class AnalyticsService {
 }
 ```
 
+---
+
+## Deployment Best Practices
+
+### Pre-Commit Validation (MANDATORY)
+Always run these THREE commands before any commit:
+```bash
+npm run build        # Catch build errors locally
+npm run type-check   # Catch TypeScript issues  
+npm run lint         # Catch syntax problems
+```
+
+**Why This Matters:**
+- Prevents broken builds from reaching the repository
+- Catches type errors early in development
+- Maintains consistent code quality standards
+- Saves CI/CD resources and time
+
+### Git Workflow Standards
+
+#### Commit Message Format
+```bash
+# Use conventional commits format
+git commit -m "feat(auth): add user registration with email verification
+
+- Implement Clerk integration for secure authentication
+- Add email verification flow with templates
+- Create user profile setup wizard
+- Add proper error handling and validation
+
+Closes #AUTH-001"
+```
+
+#### Branch Protection Rules
+- **Main branch**: Always protected, requires PR approval
+- **Feature branches**: Use descriptive names like `feat/auth-system` or `fix/book-upload-bug`
+- **Hotfix branches**: For critical production fixes only
+
+### Environment Management
+
+#### Environment Variables
+```bash
+# .env.local (development)
+DATABASE_URL="postgresql://localhost:5432/literati_dev"
+NEXTAUTH_SECRET="your-dev-secret"
+OPENAI_API_KEY="sk-dev-key"
+
+# .env.production (production)
+DATABASE_URL="postgresql://prod-host:5432/literati_prod"
+NEXTAUTH_SECRET="secure-prod-secret" 
+OPENAI_API_KEY="sk-prod-key"
+```
+
+#### Configuration Management
+- **Never commit secrets** to version control
+- Use different API keys for dev/staging/production
+- Implement proper secret rotation policies
+- Use environment-specific database connections
+
+### CI/CD Pipeline Standards
+
+#### GitHub Actions Workflow
+```yaml
+name: Literati CI/CD
+on: [push, pull_request]
+
+jobs:
+  quality-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Type check
+        run: npm run type-check
+      
+      - name: Lint code
+        run: npm run lint
+      
+      - name: Run tests
+        run: npm run test:ci
+      
+      - name: Build application
+        run: npm run build
+```
+
+#### Deployment Gates
+- **Quality Gate**: All tests must pass
+- **Security Gate**: No high-severity vulnerabilities
+- **Performance Gate**: Build size under threshold
+- **Manual Approval**: Required for production deployments
+
+### Database Migration Safety
+
+#### Migration Best Practices
+```sql
+-- Always use transactions for complex migrations
+BEGIN;
+
+-- Add new columns as nullable first
+ALTER TABLE books ADD COLUMN reading_level INTEGER;
+
+-- Populate data
+UPDATE books SET reading_level = 1 WHERE complexity_score < 5;
+
+-- Add constraints after data population
+ALTER TABLE books ALTER COLUMN reading_level SET NOT NULL;
+
+COMMIT;
+```
+
+#### Rollback Strategy
+- **Always test migrations** on staging first
+- **Backup production database** before major migrations
+- **Have rollback scripts** ready for each migration
+- **Monitor application** closely after migrations
+
+### Production Deployment Checklist
+
+#### Pre-Deployment
+- [ ] All tests passing in CI/CD
+- [ ] Security scan completed with no critical issues
+- [ ] Performance benchmarks meet requirements
+- [ ] Database migrations tested on staging
+- [ ] Monitoring and alerting configured
+- [ ] Rollback plan documented and tested
+
+#### During Deployment
+- [ ] Use blue-green deployment strategy
+- [ ] Monitor error rates and response times
+- [ ] Verify critical user journeys work
+- [ ] Check database connections and queries
+- [ ] Validate AI service integrations
+
+#### Post-Deployment
+- [ ] Monitor logs for any errors or warnings
+- [ ] Check performance metrics against baseline
+- [ ] Verify user authentication and core features
+- [ ] Test AI query processing end-to-end
+- [ ] Update monitoring dashboards
+- [ ] Document any issues or learnings
+
+### Emergency Response Procedures
+
+#### Incident Response
+1. **Immediate**: Assess impact and severity
+2. **Communicate**: Notify stakeholders and users if needed
+3. **Mitigate**: Implement quick fixes or rollback
+4. **Investigate**: Root cause analysis
+5. **Document**: Post-mortem and preventive measures
+
+#### Rollback Procedures
+```bash
+# Quick rollback using git
+git revert HEAD
+git push origin main
+
+# Database rollback (if needed)
+npm run db:rollback
+
+# Clear caches
+npm run cache:clear
+```
+
+### Monitoring & Alerting
+
+#### Key Metrics to Monitor
+- **Application Performance**: Response times, error rates
+- **Infrastructure**: CPU, memory, disk usage
+- **Business Metrics**: User registrations, AI queries
+- **Security**: Failed login attempts, API abuse
+
+#### Alert Thresholds
+- **Critical**: API error rate > 5%, Response time > 5s
+- **Warning**: API error rate > 1%, Response time > 3s
+- **Info**: Deployment completed, New user registration
+
 This comprehensive guide ensures high-quality, secure, and performant code throughout the Literati development process.

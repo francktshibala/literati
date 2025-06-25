@@ -1,0 +1,28 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+:root {
+  --font-inter: 'Inter', system-ui, sans-serif;
+  --font-crimson: 'Crimson Text', Georgia, serif;
+}
+
+/* Custom reading styles for literature */
+.reading-content {
+  font-family: var(--font-crimson);
+  line-height: 1.8;
+  font-size: 1.125rem;
+}
+
+.reading-content p {
+  margin-bottom: 1.5rem;
+}
+
+.reading-content h1,
+.reading-content h2,
+.reading-content h3 {
+  font-family: var(--font-inter);
+  font-weight: 600;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+}

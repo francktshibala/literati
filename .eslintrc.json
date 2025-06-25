@@ -1,0 +1,25 @@
+{
+  "extends": [
+    "next/core-web-vitals"
+  ],
+  "rules": {
+    // General JavaScript rules
+    "prefer-const": "error",
+    "no-var": "error",
+    "no-unused-vars": "error",
+    "no-console": "warn",
+    "no-debugger": "error",
+    
+    // React specific rules
+    "react/prop-types": "off",
+    "react/react-in-jsx-scope": "off",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn"
+  },
+  "env": {
+    "browser": true,
+    "node": true,
+    "es6": true,
+    "jest": true
+  }
+}
