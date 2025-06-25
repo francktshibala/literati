@@ -11,6 +11,13 @@ const nextConfig = {
     // Don't run ESLint during build (we'll run it separately)
     ignoreDuringBuilds: false,
   },
+  // Ensure proper build output for Vercel
+  output: 'standalone',
+  // Generate static files correctly
+  generateEtags: false,
+  // Optimize for production builds
+  poweredByHeader: false,
+  reactStrictMode: true,
 }
 
 module.exports = nextConfig
