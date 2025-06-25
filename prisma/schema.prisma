@@ -1,0 +1,150 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  books     Book[]
+  questions Question[]
+  sessions  ReadingSession[]
+
+  @@map("users")
+}
+
+model Book {
+  id          String   @id @default(cuid())
+  title       String
+  author      String
+  isbn        String?
+  description String?
+  language    String   @default("en")
+  pageCount   Int?
+  publishedAt DateTime?
+  uploadedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // File information
+  originalFileName String
+  fileSize         Int
+  mimeType         String
+
+  // Processing status
+  processingStatus ProcessingStatus @default(PENDING)
+  errorMessage     String?
+
+  // Relationships
+  userId         String
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapters       Chapter[]
+  embeddings     BookEmbedding[]
+  questions      Question[]
+  sessions       ReadingSession[]
+
+  @@map("books")
+  @@index([userId])
+  @@index([title, author])
+}
+
+model Chapter {
+  id          String @id @default(cuid())
+  title       String
+  content     String
+  chapterNum  Int
+  wordCount   Int
+  startPage   Int?
+  endPage     Int?
+
+  // Relationships
+  bookId     String
+  book       Book            @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  embeddings BookEmbedding[]
+
+  @@map("chapters")
+  @@index([bookId, chapterNum])
+}
+
+model BookEmbedding {
+  id        String                     @id @default(cuid())
+  content   String
+  embedding Unsupported("vector(1536)") // OpenAI embedding dimension
+  metadata  Json?
+  createdAt DateTime                   @default(now())
+
+  // Relationships
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapterId String?
+  chapter   Chapter? @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@map("book_embeddings")
+  @@index([bookId])
+}
+
+model Question {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String?
+  context   String?
+  createdAt DateTime @default(now())
+
+  // AI metadata
+  aiModel      String?
+  responseTime Int? // milliseconds
+  tokens       Int?
+
+  // Relationships
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@map("questions")
+  @@index([userId, bookId])
+  @@index([createdAt])
+}
+
+model ReadingSession {
+  id        String   @id @default(cuid())
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+  duration  Int? // seconds
+  progress  Float    @default(0.0) // 0.0 to 1.0
+
+  // Reading metadata
+  currentPage     Int?
+  pagesRead       Int      @default(0)
+  wordsPerMinute  Float?
+  questionsAsked  Int      @default(0)
+
+  // Relationships
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@map("reading_sessions")
+  @@index([userId, bookId])
+  @@index([startedAt])
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
