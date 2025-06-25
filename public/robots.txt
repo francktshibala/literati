@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Literati - AI Reading Companion
+# https://literati.vercel.app
+
+Sitemap: https://literati.vercel.app/sitemap.xml

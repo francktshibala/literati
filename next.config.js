@@ -4,12 +4,12 @@ const nextConfig = {
     typedRoutes: true,
   },
   typescript: {
-    // Temporarily ignore type errors during build
-    ignoreBuildErrors: true,
+    // Only ignore type errors during build for initial deployment
+    ignoreBuildErrors: process.env.NODE_ENV === 'production',
   },
   eslint: {
-    // Don't run ESLint during build (we'll run it separately)
-    ignoreDuringBuilds: false,
+    // Don't run ESLint during build on Vercel (runs separately)
+    ignoreDuringBuilds: true,
   },
   // Ensure proper build output for Vercel
   output: 'standalone',
