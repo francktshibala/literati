@@ -41,7 +41,17 @@ export class EpubService {
 
     // 5. Save to database
     try {
-      const book = await db?.book.create({
+      if (!db) {
+        // Database not configured - return success for demo mode
+        return {
+          bookId: 'demo-' + Date.now(),
+          title: metadata.title,
+          author: metadata.author,
+          message: 'EPUB uploaded successfully (demo mode - database not configured)'
+        };
+      }
+
+      const book = await db.book.create({
         data: {
           title: metadata.title,
           author: metadata.author,
