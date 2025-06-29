@@ -1,5 +1,7 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
+import { tmpdir } from 'os';
+import { Buffer } from 'buffer';
 import { UploadSecurity } from '../upload-security';
 import { FileUploadError, EpubProcessingError } from '../errors';
 import { db } from '../prisma';
@@ -12,7 +14,9 @@ export interface UploadResult {
 }
 
 export class EpubService {
-  private readonly uploadDir = join(process.cwd(), 'uploads');
+  private readonly uploadDir = process.env.NODE_ENV === 'production' 
+    ? join(tmpdir(), 'uploads')
+    : join(process.cwd(), 'uploads');
 
   async uploadAndProcess(file: File): Promise<UploadResult> {
     // 1. Validate file
