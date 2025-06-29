@@ -1,0 +1,71 @@
+PK                  "   META-INF/container.xml<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+    <rootfiles>
+        <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+    </rootfiles>
+</container>PK                  F   OEBPS/content.opf<?xml version="1.0" encoding="UTF-8"?>
+<package version="3.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="book-id">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:identifier id="book-id">urn:uuid:12345678-1234-1234-1234-123456789abc</dc:identifier>
+        <dc:title>Sample Book for Testing</dc:title>
+        <dc:creator>Test Author</dc:creator>
+        <dc:language>en</dc:language>
+        <dc:description>A simple sample EPUB file for testing the Literati upload functionality.</dc:description>
+        <meta property="dcterms:modified">2025-06-29T07:00:00Z</meta>
+    </metadata>
+    <manifest>
+        <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+        <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+    </manifest>
+    <spine>
+        <itemref idref="chapter1"/>
+    </spine>
+</package>PK                  s   OEBPS/nav.xhtml<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head>
+    <title>Navigation</title>
+</head>
+<body>
+    <nav epub:type="toc">
+        <h1>Table of Contents</h1>
+        <ol>
+            <li><a href="chapter1.xhtml">Chapter 1: Introduction</a></li>
+        </ol>
+    </nav>
+</body>
+</html>PK                  X  OEBPS/chapter1.xhtml<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Chapter 1: Introduction</title>
+</head>
+<body>
+    <h1>Chapter 1: Introduction</h1>
+    <p>Welcome to this sample EPUB book created for testing the Literati AI reading companion application.</p>
+    
+    <p>This is a simple test book that contains:</p>
+    <ul>
+        <li>Basic EPUB 3.0 structure</li>
+        <li>Valid metadata</li>
+        <li>Navigation document</li>
+        <li>Sample content</li>
+    </ul>
+    
+    <p>The purpose of this book is to test the EPUB upload functionality in Literati, ensuring that:</p>
+    <ol>
+        <li>File validation works correctly</li>
+        <li>Metadata extraction functions properly</li>
+        <li>Content processing operates as expected</li>
+        <li>Database storage completes successfully</li>
+    </ol>
+    
+    <p>If you can read this text after uploading, then the basic EPUB processing is working correctly!</p>
+    
+    <h2>About Literati</h2>
+    <p>Literati is an AI-powered reading companion that helps users understand and interact with complex literature through contextual assistance, character tracking, and historical context.</p>
+    
+    <p>This sample book will help test the foundation of that experience.</p>
+</body>
+</html>PK                  2   mimetype application/epub+zipPK      "               �    META-INF/container.xmlPK      F               �   OEBPS/content.opfPK      s               S  OEBPS/nav.xhtmlPK      X              �  OEBPS/chapter1.xhtmlPK      2               )
+  mimetypePK      �   a
