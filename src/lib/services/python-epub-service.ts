@@ -47,6 +47,7 @@ export class PythonEPUBService {
     // Use Railway API URL in production, localhost for development
     this.apiUrl = process.env.EPUB_API_URL || 'http://localhost:8000';
     
+    console.log(`🔍 DEBUG: process.env.EPUB_API_URL =`, process.env.EPUB_API_URL);
     console.log(`📡 Python EPUB Service initialized with API: ${this.apiUrl}`);
   }
 
