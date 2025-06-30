@@ -8,6 +8,10 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Public runtime config for client-side access
+  publicRuntimeConfig: {
+    epubApiUrl: process.env.NEXT_PUBLIC_EPUB_API_URL,
+  },
 }
 
 module.exports = nextConfig

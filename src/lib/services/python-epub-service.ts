@@ -53,14 +53,39 @@ export class PythonEPUBService {
   }
 
   private getApiUrl(): string {
-    // Next.js client-side environment variable access
-    if (typeof window !== 'undefined') {
-      // Client-side: use environment variable or production fallback
-      return process.env.NEXT_PUBLIC_EPUB_API_URL || 'https://literati-production.up.railway.app';
-    } else {
-      // Server-side: use environment variable or localhost for development
-      return process.env.NEXT_PUBLIC_EPUB_API_URL || 'http://localhost:8000';
+    // Method 1: Direct environment variable
+    if (process.env.NEXT_PUBLIC_EPUB_API_URL) {
+      console.log(`✅ Method 1: Found environment variable: ${process.env.NEXT_PUBLIC_EPUB_API_URL}`);
+      return process.env.NEXT_PUBLIC_EPUB_API_URL;
     }
+
+    // Method 2: Next.js runtime config
+    try {
+      const getConfig = require('next/config').default;
+      const { publicRuntimeConfig } = getConfig() || {};
+      if (publicRuntimeConfig?.epubApiUrl) {
+        console.log(`✅ Method 2: Found runtime config: ${publicRuntimeConfig.epubApiUrl}`);
+        return publicRuntimeConfig.epubApiUrl;
+      }
+    } catch (error) {
+      console.warn('⚠️ Runtime config not available:', error);
+    }
+
+    // Method 3: Production hostname detection
+    if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
+      console.log(`✅ Method 3: Production hostname detected, using Railway API`);
+      return 'https://literati-production.up.railway.app';
+    }
+
+    // Method 4: Server-side production check
+    if (typeof window === 'undefined' && process.env.NODE_ENV === 'production') {
+      console.log(`✅ Method 4: Production server environment, using Railway API`);
+      return 'https://literati-production.up.railway.app';
+    }
+
+    // Method 5: Development fallback
+    console.log(`✅ Method 5: Development fallback to localhost`);
+    return 'http://localhost:8000';
   }
 
   /**
