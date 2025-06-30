@@ -7,6 +7,10 @@ interface UploadResult {
   title: string;
   author: string;
   message: string;
+  chaptersCount?: number;
+  totalWords?: number;
+  processingTime?: number;
+  language?: string;
 }
 
 export default function UploadForm() {
@@ -97,6 +101,10 @@ export default function UploadForm() {
             <div className="mt-2 text-sm text-green-600">
               <p><strong>Title:</strong> {result.title}</p>
               <p><strong>Author:</strong> {result.author}</p>
+              {result.chaptersCount && <p><strong>Chapters:</strong> {result.chaptersCount}</p>}
+              {result.totalWords && <p><strong>Words:</strong> {result.totalWords.toLocaleString()}</p>}
+              {result.language && <p><strong>Language:</strong> {result.language}</p>}
+              {result.processingTime && <p><strong>Processing Time:</strong> {result.processingTime}ms</p>}
               <p><strong>Book ID:</strong> {result.bookId}</p>
             </div>
           </div>
