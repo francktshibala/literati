@@ -5,12 +5,17 @@ import { Buffer } from 'buffer';
 import { UploadSecurity } from '../upload-security';
 import { FileUploadError, EpubProcessingError } from '../errors';
 import { db } from '../prisma';
+import { pythonEPUBService, EPUBResult } from './python-epub-service';
 
 export interface UploadResult {
   bookId: string;
   title: string;
   author: string;
   message: string;
+  chaptersCount?: number;
+  totalWords?: number;
+  processingTime?: number;
+  language?: string;
 }
 
 export class EpubService {
@@ -19,6 +24,8 @@ export class EpubService {
     : join(process.cwd(), 'uploads');
 
   async uploadAndProcess(file: File): Promise<UploadResult> {
+    console.log(`📚 Starting EPUB upload and processing: ${file.name}`);
+
     // 1. Validate file
     const validation = UploadSecurity.validateFile(file);
     if (!validation.valid) {
@@ -36,45 +43,111 @@ export class EpubService {
     const sanitizedFilename = UploadSecurity.sanitizeFilename(file.name);
     const filePath = await this.saveFile(buffer, sanitizedFilename);
 
-    // 4. Extract basic metadata (simplified for now)
-    const metadata = this.extractBasicMetadata(file.name);
+    console.log(`💾 File saved to: ${filePath}`);
 
-    // 5. Save to database
+    // 4. Process EPUB with Python service to extract chapters
+    let epubResult: EPUBResult | null = null;
+    let processingTime = 0;
+
+    try {
+      console.log(`🔧 Processing EPUB with Python service...`);
+      const processingResult = await pythonEPUBService.processEPUB(filePath);
+      
+      if (!processingResult.success) {
+        console.warn(`⚠️ EPUB processing failed: ${processingResult.error}`);
+        // Fall back to basic metadata if processing fails
+        const basicMetadata = this.extractBasicMetadata(file.name);
+        epubResult = null;
+        processingTime = processingResult.processing_time;
+      } else {
+        epubResult = processingResult.data!;
+        processingTime = processingResult.processing_time;
+        console.log(`✅ EPUB processed successfully: ${epubResult.total_chapters} chapters, ${epubResult.total_words} words`);
+      }
+    } catch (error) {
+      console.error(`❌ EPUB processing error:`, error);
+      // Continue with basic metadata extraction
+    }
+
+    // 5. Save to database with extracted content
     try {
       if (!db) {
         // Database not configured - return success for demo mode
-        return {
+        const demoResult: UploadResult = {
           bookId: 'demo-' + Date.now(),
-          title: metadata.title,
-          author: metadata.author,
-          message: 'EPUB uploaded successfully (demo mode - database not configured)'
+          title: epubResult?.metadata.title || this.extractBasicMetadata(file.name).title,
+          author: epubResult?.metadata.creator || this.extractBasicMetadata(file.name).author,
+          message: 'EPUB uploaded successfully (demo mode - database not configured)',
+          chaptersCount: epubResult?.total_chapters,
+          totalWords: epubResult?.total_words,
+          processingTime,
+          language: epubResult?.metadata.language
         };
+        
+        console.log(`📊 Demo mode result:`, demoResult);
+        return demoResult;
       }
 
+      // Create book with extracted metadata
+      const bookData = {
+        title: epubResult?.metadata.title || this.extractBasicMetadata(file.name).title,
+        author: epubResult?.metadata.creator || this.extractBasicMetadata(file.name).author,
+        language: epubResult?.metadata.language || 'en',
+        description: epubResult?.metadata.description,
+        originalFileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type || 'application/epub+zip',
+        processingStatus: epubResult ? 'COMPLETED' : 'PARTIAL',
+        userId: 'temp-user-id' // Temporary placeholder
+      };
+
+      console.log(`💾 Saving book to database:`, bookData);
+
       const book = await db.book.create({
-        data: {
-          title: metadata.title,
-          author: metadata.author,
-          originalFileName: file.name,
-          fileSize: file.size,
-          mimeType: file.type || 'application/epub+zip',
-          processingStatus: 'COMPLETED', // Simplified for FILE-001a
-          // Note: userId will be added when auth is implemented
-          userId: 'temp-user-id' // Temporary placeholder
-        }
+        data: bookData
       });
+
+      // Create chapters if we have them
+      if (epubResult && epubResult.chapters.length > 0) {
+        console.log(`📝 Creating ${epubResult.chapters.length} chapters...`);
+        
+        const chaptersData = epubResult.chapters.map(chapter => ({
+          bookId: book.id,
+          title: chapter.title,
+          content: chapter.content,
+          chapterNum: chapter.order,
+          wordCount: chapter.word_count
+        }));
+
+        await db.chapter.createMany({
+          data: chaptersData
+        });
+
+        console.log(`✅ Created ${chaptersData.length} chapters in database`);
+      }
 
       if (!book) {
         throw new EpubProcessingError('Failed to save book to database');
       }
 
-      return {
+      const result: UploadResult = {
         bookId: book.id,
         title: book.title,
         author: book.author,
-        message: 'EPUB uploaded and processed successfully'
+        message: epubResult 
+          ? 'EPUB uploaded and processed successfully with full chapter extraction'
+          : 'EPUB uploaded successfully with basic metadata (chapter extraction failed)',
+        chaptersCount: epubResult?.total_chapters,
+        totalWords: epubResult?.total_words,
+        processingTime,
+        language: book.language
       };
+
+      console.log(`🎉 Upload complete:`, result);
+      return result;
+
     } catch (error) {
+      console.error(`❌ Database error:`, error);
       throw new EpubProcessingError(`Database error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
