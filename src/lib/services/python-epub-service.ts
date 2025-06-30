@@ -45,9 +45,14 @@ export class PythonEPUBService {
 
   constructor() {
     // Use Railway API URL in production, localhost for development
-    this.apiUrl = process.env.EPUB_API_URL || 'http://localhost:8000';
+    // In Next.js, environment variables need NEXT_PUBLIC_ prefix for client-side access
+    const envApiUrl = typeof window !== 'undefined' 
+      ? (window as any).process?.env?.NEXT_PUBLIC_EPUB_API_URL
+      : process.env.NEXT_PUBLIC_EPUB_API_URL;
     
-    console.log(`🔍 DEBUG: process.env.EPUB_API_URL =`, process.env.EPUB_API_URL);
+    this.apiUrl = envApiUrl || 'http://localhost:8000';
+    
+    console.log(`🔍 DEBUG: NEXT_PUBLIC_EPUB_API_URL =`, envApiUrl);
     console.log(`📡 Python EPUB Service initialized with API: ${this.apiUrl}`);
   }
 

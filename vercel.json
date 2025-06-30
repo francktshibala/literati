@@ -4,6 +4,6 @@
   "framework": "nextjs",
   "regions": ["iad1"],
   "env": {
-    "EPUB_API_URL": "@epub_api_url"
+    "NEXT_PUBLIC_EPUB_API_URL": "@epub_api_url"
   }
 }
