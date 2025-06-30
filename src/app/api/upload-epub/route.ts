@@ -4,6 +4,8 @@ import { handleApiError } from '@/lib/errors';
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('🚀 [API] Upload EPUB endpoint called');
+    
     // Parse form data
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -15,11 +17,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log(`📁 [API] File received: ${file.name}, size: ${file.size}`);
+    console.log('🔗 [API] Calling epubService.uploadAndProcess...');
+
     // Process the upload
     const result = await epubService.uploadAndProcess(file);
 
+    console.log('✅ [API] Upload processing completed successfully');
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
+    console.error('❌ [API] Upload processing failed:', error);
     return handleApiError(error);
   }
 }
