@@ -1,9 +1,5 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { readFile } from 'fs/promises';
-import path from 'path';
-
-const execAsync = promisify(exec);
+// HTTP-based Python EPUB service client
+// Replaces CLI-based approach with Railway API calls
 
 export interface Chapter {
   id: string;
@@ -40,60 +36,79 @@ export interface ProcessingResult {
 }
 
 /**
- * Node.js service that integrates with Python EPUB processor.
- * Provides TypeScript interface for EPUB chapter extraction.
+ * HTTP-based Python EPUB service client.
+ * Calls Railway-hosted FastAPI service instead of local CLI.
  */
 export class PythonEPUBService {
-  private pythonScriptPath: string;
+  private apiUrl: string;
   private maxProcessingTime: number = 30000; // 30 seconds timeout
 
   constructor() {
-    // Path to our Python EPUB processor
-    this.pythonScriptPath = path.join(process.cwd(), 'ai-service', 'epub_processor.py');
+    // Use Railway API URL in production, localhost for development
+    this.apiUrl = process.env.EPUB_API_URL || 'http://localhost:8000';
+    
+    console.log(`📡 Python EPUB Service initialized with API: ${this.apiUrl}`);
   }
 
   /**
-   * Process EPUB file and extract chapters using Python service.
+   * Process EPUB file using HTTP API instead of CLI.
    * 
-   * @param epubFilePath - Absolute path to EPUB file
+   * @param file - File object from frontend upload
    * @returns Promise with processing results
    */
-  async processEPUB(epubFilePath: string): Promise<ProcessingResult> {
+  async processEPUB(file: File): Promise<ProcessingResult> {
     const startTime = Date.now();
 
     try {
-      // Validate file exists
-      await readFile(epubFilePath);
+      console.log(`📚 Processing EPUB via API: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
 
-      console.log(`Processing EPUB: ${epubFilePath}`);
+      // 1. Create FormData for file upload
+      const formData = new FormData();
+      formData.append('file', file);
 
-      // Execute Python processor
-      const command = `python3 "${this.pythonScriptPath}" "${epubFilePath}"`;
-      
-      const { stdout, stderr } = await execAsync(command, {
-        timeout: this.maxProcessingTime,
-        maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large outputs
+      // 2. Call Railway FastAPI service
+      const response = await fetch(`${this.apiUrl}/process-epub`, {
+        method: 'POST',
+        body: formData,
+        // Don't set Content-Type header - let browser set it with boundary
+        signal: AbortSignal.timeout(this.maxProcessingTime)
       });
-
-      if (stderr && stderr.includes('❌ Error:')) {
-        throw new Error(stderr.split('❌ Error: ')[1]?.split('\n')[0] || 'Python processing failed');
-      }
-
-      // Parse output to find JSON file path
-      const outputMatch = stdout.match(/📁 Saved results to: (.+\.json)/);
-      if (!outputMatch) {
-        throw new Error('Could not find output JSON file path');
-      }
-
-      const jsonFilePath = outputMatch[1];
-      
-      // Read the generated JSON file
-      const jsonContent = await readFile(jsonFilePath, 'utf-8');
-      const result: EPUBResult = JSON.parse(jsonContent);
 
       const processingTime = Date.now() - startTime;
 
-      console.log(`✅ EPUB processed successfully in ${processingTime}ms: ${result.total_chapters} chapters, ${result.total_words} words`);
+      // 3. Handle response
+      if (!response.ok) {
+        let errorMessage = `API error: ${response.status} ${response.statusText}`;
+        
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.detail || errorMessage;
+        } catch {
+          // Ignore JSON parse errors for error responses
+        }
+        
+        console.error(`❌ API error in ${processingTime}ms:`, errorMessage);
+        
+        return {
+          success: false,
+          error: errorMessage,
+          processing_time: processingTime
+        };
+      }
+
+      // 4. Parse successful response
+      const apiResponse = await response.json();
+      
+      if (!apiResponse.success || !apiResponse.data) {
+        throw new Error('Invalid API response format');
+      }
+
+      const result: EPUBResult = apiResponse.data;
+
+      console.log(
+        `✅ EPUB processed successfully via API in ${processingTime}ms: ` +
+        `${result.total_chapters} chapters, ${result.total_words} words`
+      );
 
       return {
         success: true,
@@ -103,7 +118,17 @@ export class PythonEPUBService {
 
     } catch (error) {
       const processingTime = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      let errorMessage = 'Unknown error';
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          errorMessage = `Processing timeout after ${this.maxProcessingTime}ms`;
+        } else if (error.message.includes('fetch')) {
+          errorMessage = `Cannot connect to EPUB processing service at ${this.apiUrl}`;
+        } else {
+          errorMessage = error.message;
+        }
+      }
       
       console.error(`❌ EPUB processing failed in ${processingTime}ms:`, errorMessage);
 
@@ -118,89 +143,119 @@ export class PythonEPUBService {
   /**
    * Validate EPUB file format and size.
    * 
-   * @param filePath - Path to file to validate
+   * @param file - File object to validate
    * @param maxSizeBytes - Maximum allowed file size (default 50MB)
    * @returns Validation result
    */
-  async validateEPUB(filePath: string, maxSizeBytes: number = 50 * 1024 * 1024): Promise<{
+  validateEPUB(file: File, maxSizeBytes: number = 50 * 1024 * 1024): {
     valid: boolean;
     error?: string;
-    size?: number;
-  }> {
+    size: number;
+  } {
     try {
-      const stats = await readFile(filePath).then(buffer => ({
-        size: buffer.length
-      }));
-
       // Check file size
-      if (stats.size > maxSizeBytes) {
+      if (file.size > maxSizeBytes) {
         return {
           valid: false,
-          error: `File too large: ${(stats.size / 1024 / 1024).toFixed(1)}MB (max ${maxSizeBytes / 1024 / 1024}MB)`,
-          size: stats.size
+          error: `File too large: ${(file.size / 1024 / 1024).toFixed(1)}MB (max ${maxSizeBytes / 1024 / 1024}MB)`,
+          size: file.size
         };
       }
 
       // Check file extension
-      if (!filePath.toLowerCase().endsWith('.epub')) {
+      if (!file.name.toLowerCase().endsWith('.epub')) {
         return {
           valid: false,
           error: 'File must have .epub extension',
-          size: stats.size
+          size: file.size
+        };
+      }
+
+      // Check file type (if available)
+      if (file.type && !file.type.includes('epub') && !file.type.includes('zip')) {
+        return {
+          valid: false,
+          error: `Invalid file type: ${file.type}`,
+          size: file.size
         };
       }
 
       return {
         valid: true,
-        size: stats.size
+        size: file.size
       };
 
     } catch (error) {
       return {
         valid: false,
-        error: `File validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        error: `File validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        size: file.size || 0
       };
     }
   }
 
   /**
-   * Health check for Python processor.
+   * Health check for Python API service.
    * 
-   * @returns Promise indicating if processor is available
+   * @returns Promise indicating if API service is available
    */
-  async healthCheck(): Promise<{ healthy: boolean; error?: string }> {
+  async healthCheck(): Promise<{ healthy: boolean; error?: string; apiUrl?: string }> {
     try {
-      const { stdout, stderr } = await execAsync('python3 --version', { timeout: 5000 });
+      const response = await fetch(`${this.apiUrl}/health`, { 
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      });
       
-      if (stderr && !stdout) {
-        return { healthy: false, error: 'Python3 not available' };
+      if (response.ok) {
+        const healthData = await response.json();
+        console.log(`✅ EPUB API health check passed:`, healthData);
+        
+        return { 
+          healthy: true, 
+          apiUrl: this.apiUrl 
+        };
+      } else {
+        return { 
+          healthy: false, 
+          error: `API returned ${response.status}: ${response.statusText}`,
+          apiUrl: this.apiUrl
+        };
       }
-
-      // Check if our script exists
-      await readFile(this.pythonScriptPath);
-
-      return { healthy: true };
-
     } catch (error) {
       return {
         healthy: false,
-        error: `Health check failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        error: `Cannot reach EPUB API at ${this.apiUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        apiUrl: this.apiUrl
       };
     }
   }
 
   /**
-   * Get processing statistics.
+   * Get processing statistics from API service.
    * 
    * @returns Service statistics
    */
-  getStats() {
-    return {
-      service: 'PythonEPUBService',
-      processor_path: this.pythonScriptPath,
-      max_processing_time: this.maxProcessingTime,
-      max_file_size: '50MB'
-    };
+  async getStats(): Promise<any> {
+    try {
+      const response = await fetch(`${this.apiUrl}/stats`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      });
+      
+      if (response.ok) {
+        return await response.json();
+      } else {
+        throw new Error(`Stats API returned ${response.status}`);
+      }
+    } catch (error) {
+      return {
+        service: 'PythonEPUBService',
+        api_url: this.apiUrl,
+        max_processing_time: this.maxProcessingTime,
+        max_file_size: '50MB',
+        error: `Cannot fetch stats: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
   }
 }
 

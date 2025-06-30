@@ -45,27 +45,28 @@ export class EpubService {
 
     console.log(`💾 File saved to: ${filePath}`);
 
-    // 4. Process EPUB with Python service to extract chapters
+    // 4. Process EPUB with Python HTTP API service
     let epubResult: EPUBResult | null = null;
     let processingTime = 0;
 
     try {
-      console.log(`🔧 Processing EPUB with Python service...`);
-      const processingResult = await pythonEPUBService.processEPUB(filePath);
+      console.log(`🔧 Processing EPUB with Python HTTP API...`);
+      
+      // Pass File object directly to HTTP API (no need to save to disk first)
+      const processingResult = await pythonEPUBService.processEPUB(file);
       
       if (!processingResult.success) {
         console.warn(`⚠️ EPUB processing failed: ${processingResult.error}`);
         // Fall back to basic metadata if processing fails
-        const basicMetadata = this.extractBasicMetadata(file.name);
         epubResult = null;
         processingTime = processingResult.processing_time;
       } else {
         epubResult = processingResult.data!;
         processingTime = processingResult.processing_time;
-        console.log(`✅ EPUB processed successfully: ${epubResult.total_chapters} chapters, ${epubResult.total_words} words`);
+        console.log(`✅ EPUB processed successfully via API: ${epubResult.total_chapters} chapters, ${epubResult.total_words} words`);
       }
     } catch (error) {
-      console.error(`❌ EPUB processing error:`, error);
+      console.error(`❌ EPUB API processing error:`, error);
       // Continue with basic metadata extraction
     }
 
