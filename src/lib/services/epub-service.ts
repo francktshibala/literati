@@ -25,6 +25,7 @@ export class EpubService {
 
   async uploadAndProcess(file: File): Promise<UploadResult> {
     console.log(`📚 Starting EPUB upload and processing: ${file.name}`);
+    console.log(`🔄 Force deployment refresh - using HTTP API approach`);
 
     // 1. Validate file
     const validation = UploadSecurity.validateFile(file);
