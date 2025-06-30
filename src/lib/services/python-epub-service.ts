@@ -64,6 +64,13 @@ export class PythonEPUBService {
   }
 
   /**
+   * Get the current API URL (for debugging)
+   */
+  public getCurrentApiUrl(): string {
+    return this.apiUrl;
+  }
+
+  /**
    * Process EPUB file using HTTP API instead of CLI.
    * 
    * @param file - File object from frontend upload

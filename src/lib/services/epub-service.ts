@@ -51,6 +51,9 @@ export class EpubService {
 
     try {
       console.log(`🔧 Processing EPUB with Python HTTP API...`);
+      console.log(`🔍 Python service API URL: ${pythonEPUBService.getCurrentApiUrl()}`);
+      console.log(`🔍 Environment variable: ${process.env.NEXT_PUBLIC_EPUB_API_URL}`);
+      console.log(`🔍 Server-side check: ${typeof window === 'undefined' ? 'SERVER' : 'CLIENT'}`);
       
       // Pass File object directly to HTTP API (no need to save to disk first)
       const processingResult = await pythonEPUBService.processEPUB(file);
