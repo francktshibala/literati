@@ -45,11 +45,22 @@ export class PythonEPUBService {
 
   constructor() {
     // Use Railway API URL in production, localhost for development
-    // In Next.js client-side, environment variables are injected at build time
-    this.apiUrl = process.env.NEXT_PUBLIC_EPUB_API_URL || 'http://localhost:8000';
+    // Handle client-side environment variable access properly
+    this.apiUrl = this.getApiUrl();
     
     console.log(`🔍 DEBUG: API URL =`, this.apiUrl);
     console.log(`📡 Python EPUB Service initialized with API: ${this.apiUrl}`);
+  }
+
+  private getApiUrl(): string {
+    // Next.js client-side environment variable access
+    if (typeof window !== 'undefined') {
+      // Client-side: use environment variable or production fallback
+      return process.env.NEXT_PUBLIC_EPUB_API_URL || 'https://literati-production.up.railway.app';
+    } else {
+      // Server-side: use environment variable or localhost for development
+      return process.env.NEXT_PUBLIC_EPUB_API_URL || 'http://localhost:8000';
+    }
   }
 
   /**
